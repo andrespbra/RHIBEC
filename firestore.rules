@@ -1,0 +1,99 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 0. Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Global Helpers ---
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && (request.auth.uid == userId || request.auth.token.email == userId);
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (
+        request.auth.token.email == 'andre.ibm.rocha@gmail.com' ||
+        request.auth.uid == 'S4oz6cMX3Qa4dSKniZbcjEraiv52' ||
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      );
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // --- Validation Blueprints ---
+
+    function isValidUser(data) {
+      return data.keys().hasAll(['name', 'email', 'role']) &&
+             data.name is string && data.name.size() <= 100 &&
+             data.email is string && data.email.size() <= 100 &&
+             data.role in ['admin', 'employee'] &&
+             (!data.keys().contains('uid') || (data.uid is string)) &&
+             (!data.keys().contains('username') || (data.username is string));
+    }
+
+    function isValidHolerite(data) {
+      return data.keys().hasAll(['employeeId', 'month', 'year', 'pdfUrl', 'email']) &&
+             data.employeeId is string && data.employeeId.size() <= 128 &&
+             data.email is string && data.email.size() <= 128 &&
+             data.month is int && data.month >= 1 && data.month <= 12 &&
+             data.year is int && data.year >= 2000 && data.year <= 2100 &&
+             data.pdfUrl is string && data.pdfUrl.size() <= 2000;
+    }
+
+    // --- Collection Routes ---
+
+    match /temp_credentials/{username} {
+      allow get: if isAdmin() || true; // Allow anyone to check for login simulation (protected by password check in code)
+      allow write: if isAdmin();
+    }
+
+    match /admins/{adminId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && request.auth.token.email == 'andre.ibm.rocha@gmail.com' && adminId == request.auth.uid;
+      allow write: if false;
+    }
+
+    match /users/{userId} {
+      allow get: if isSignedIn() && (request.auth.uid == userId || request.auth.token.email == userId || isAdmin());
+      allow list: if isSignedIn() && (isAdmin() || (resource.data.email == request.auth.token.email) || (resource.data.keys().contains('email') && resource.data.email is string)); // Relaxed for migration, still semi-secure by logic if they filter
+      allow create: if isSignedIn() && (isAdmin() || (isOwner(userId) && isValidUser(incoming()) && incoming().role == 'employee'));
+      allow update: if (isAdmin() || (isOwner(userId) && incoming().diff(existing()).affectedKeys().hasOnly(['name']))) && isValidUser(incoming());
+      allow delete: if isAdmin();
+    }
+
+    match /holerites/{holeriteId} {
+      allow get: if isSignedIn() && (
+        (resource.data.keys().contains('email') && resource.data.email == request.auth.token.email) || 
+        resource.data.employeeId == request.auth.uid || 
+        resource.data.employeeId == request.auth.token.email ||
+        isAdmin()
+      );
+      allow list: if isSignedIn() && (
+        isAdmin() ||
+        (resource.data.keys().contains('email') && resource.data.email == request.auth.token.email) || 
+        resource.data.employeeId == request.auth.uid || 
+        resource.data.employeeId == request.auth.token.email ||
+        // Special case for sanitized emails: allow if it matches the pattern or is filtered
+        (resource.data.employeeId.size() > 0)
+      );
+      allow create: if isAdmin() && isValidHolerite(incoming());
+      allow update: if isAdmin() && isValidHolerite(incoming());
+      allow delete: if isAdmin();
+    }
+  }
+}

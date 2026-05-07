@@ -1,0 +1,57 @@
+{
+  "entities": {
+    "User": {
+      "title": "User Profile",
+      "description": "User profile containing roles and employee identification.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "name": { "type": "string" },
+        "email": { "type": "string" },
+        "username": { "type": "string" },
+        "role": { "type": "string", "enum": ["admin", "employee"] },
+        "employeeId": { "type": "string" },
+        "department": { "type": "string" },
+        "position": { "type": "string" },
+        "admissionDate": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "email", "role"]
+    },
+    "TemporaryCredential": {
+      "title": "Temporary Credentials",
+      "description": "Internal mapping for username/password login simulation.",
+      "type": "object",
+      "properties": {
+        "username": { "type": "string" },
+        "password": { "type": "string" },
+        "email": { "type": "string" }
+      },
+      "required": ["username", "password", "email"]
+    },
+    "Holerite": {
+      "title": "Payslip",
+      "description": "Monthly payslip record with PDF link.",
+      "type": "object",
+      "properties": {
+        "employeeId": { "type": "string", "description": "The UID of the employee owner" },
+        "month": { "type": "integer" },
+        "year": { "type": "integer" },
+        "pdfUrl": { "type": "string" },
+        "fileName": { "type": "string" },
+        "uploadedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["employeeId", "month", "year", "pdfUrl"]
+    }
+  },
+  "firestore": {
+    "users": {
+      "schema": "User",
+      "description": "User profiles and permissions."
+    },
+    "holerites": {
+      "schema": "Holerite",
+      "description": "Collection of all payroll PDFs."
+    }
+  }
+}
